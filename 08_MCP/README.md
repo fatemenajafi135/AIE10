@@ -155,7 +155,21 @@ Why is OAuth important for MCP servers, and what security considerations should 
 
 #### Answer
 
-_(insert your answer here)_
+*MCP servers are a significant security risk if left unprotected. They expose tools that can take real-world actions like modifying data, placing orders, calling external APIs, and without authentication, any client (including a malicious AI agent) can call them freely and anonymously.*
+
+*OAuth addresses this at multiple levels:*
+
+- *Authorization via scopes: defines what each client is allowed to do. For example, separating read (browsing) from write (modifying state) means we can issue limited-access tokens when full access isn't needed.*
+
+- *Per-user identity: tools that act on behalf of a user like a shopping cart, a personal inbox, or a user profile, can only work correctly if the server knows who is making the call. OAuth ties every request to an identity via the access token.*
+
+- *Token revocation: if a client or agent misbehaves, we can revoke its token immediately without affecting other users. Without auth, there's no selective way to cut off one bad actor.*
+
+- *Rate limiting per identity: once we have identity, we can enforce per-user limits fairly. This also makes it harder to abuse the server with bulk unauthenticated requests.*
+
+- *Client accountability and auditability: registered clients have IDs, so every call can be traced back to a specific client. It's useful for debugging, billing, or security investigations.*
+
+*Additional security considerations: We can use HTTPS in production, keep token lifetimes short, validate token expiry on every request, and apply the principle of least privilege when assigning scopes.*
 
 ### Question #2
 
@@ -163,7 +177,24 @@ What is Streamable HTTP transport in MCP, and why might you expose a server publ
 
 #### Answer
 
-_(insert your answer here)_
+***What is Streamable HTTP transport:***
+
+*Streamable HTTP is one of MCP's transport options. It runs the server as a real HTTP server that clients connect to over the network. The "streamable" part means responses can flow back incrementally using server-sent events, rather than as a single blocking response. This is what `uv run server.py` starts: a proper HTTP server on port 8000, not a local pipe.*
+
+*The alternative is stdio transport, where the server runs as a child process tied to a single terminal session, communicating through standard input/output. It only works when a human is running it locally.*
+
+***Why expose publicly with OAuth instead of using stdio:***
+
+- *Remote clients can't reach localhost: if the AI agent is a hosted service (like Claude.ai or a cloud deployment), it has no access to our local machine. A public URL via ngrok or a real deployment is the only way to bridge that gap.*
+
+- *Multi-user support: stdio is inherently one client per process. An HTTP server can handle many concurrent clients, each with their own OAuth token, identity, and isolated state.*
+
+- *Always-on availability: a locally running stdio server dies when we close the terminal. A deployed HTTP server is available 24/7 without a human keeping it alive.*
+
+- *OAuth becomes necessary here: because the server is now reachable by anyone on the internet, we need authentication to control who can call our tools. stdio relied on OS-level process isolation; HTTP has no such built-in protection.*
+
+*In short, Streamable HTTP is what makes MCP servers shareable and production-ready and OAuth is what makes that safe.*
+
 
 ## Activity 1: Extend the MCP Server
 
