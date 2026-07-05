@@ -21,6 +21,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { getMessageText, toolLabel } from "@/lib/messages";
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 type StreamMessage = ReturnType<typeof useStream>["messages"][number];
@@ -207,7 +210,7 @@ function MessageRow({ message }: { message: StreamMessage }) {
                 : "bg-muted text-foreground"
             )}
           >
-            {text}
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
           </div>
         )}
       </div>
