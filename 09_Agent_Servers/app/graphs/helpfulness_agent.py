@@ -1,5 +1,6 @@
 from langgraph.graph import END, MessagesState, StateGraph
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, RemoveMessage
+
 from pydantic import BaseModel
 
 from app.models import get_judge_model
@@ -7,6 +8,7 @@ from app.graphs.simple_agent import graph as simple_agent_graph
 
 
 MAX_HELPFULNESS_RETRIES = 3
+INTERNAL = " INTERNAL "
 
 JUDGE_SYSTEM_PROMPT = (
     "You are a strict judge of AI responses from a cat-health assistant. "
@@ -32,6 +34,7 @@ UNHELPFUL_NOTE = (
     "\n⚠️ This assistant only helps with cat health questions. "
     "For important decisions, please verify with a reliable source."
 )
+FAILED_ATTEMPT_NOTE = "Attempt {n} was not helpful"
 
 
 class HelpfulnessGrade(BaseModel):
@@ -43,18 +46,20 @@ class HelpfulnessState(MessagesState):
     is_helpful: bool
     reason: str
 
-
-judge = get_judge_model().with_structured_output(HelpfulnessGrade)
-
+judge = get_judge_model().with_structured_output(HelpfulnessGrade).with_config(tags=["nostream"])
 
 def judge_node(state: HelpfulnessState) -> dict:
     messages = state["messages"]
-    
-    answer = state["messages"][-1].content if messages else ""
+    start_over = True
+
+    last_answer = messages[-1] if messages else None
+    answer = last_answer.content if last_answer else ""
     question = ""
     for m in reversed(messages):
         if isinstance(m, HumanMessage):
             question = m.content
+            if question.startswith(INTERNAL):
+                start_over = False
             break
 
     grade = judge.invoke(
@@ -63,19 +68,25 @@ def judge_node(state: HelpfulnessState) -> dict:
             HumanMessage(JUDGE_PROMPT.format(question=question, answer=answer))
         ]
     )
-    
-    update = {
-        "is_helpful": grade.is_helpful, 
-        "reason": grade.reason,
-        'retry_count': state.get("retry_count", 0) + 1
-    }
 
-    next_retry_count = state.get("retry_count", 0) + 1
+    next_retry_count = 1 if start_over else state.get("retry_count", 0) + 1 
+
+    update = {
+        "is_helpful": grade.is_helpful,
+        "reason": grade.reason,
+        "retry_count": next_retry_count,
+    }
 
     if not grade.is_helpful:
         if next_retry_count < MAX_HELPFULNESS_RETRIES:
             update["messages"] = [
-                HumanMessage(content=f"Your previous answer wasn't helpful enough: {grade.reason}. Please try again.")
+                RemoveMessage(id=last_answer.id),
+                AIMessage(
+                    content=FAILED_ATTEMPT_NOTE.format(n=next_retry_count)
+                ),
+                HumanMessage(
+                    content=f"{INTERNAL}Your previous answer wasn't helpful enough: {grade.reason} Please try again.",
+                ),
             ]
         else:
             update["messages"] = [AIMessage(content=UNHELPFUL_NOTE)]
