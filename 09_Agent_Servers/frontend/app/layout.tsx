@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Bellota, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
+const geistSans = Bellota({
   variable: "--font-geist-sans",
+  weight: ["300", "400", "700"],
   subsets: ["latin"],
 });
 

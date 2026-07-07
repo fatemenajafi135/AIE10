@@ -25,8 +25,17 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
+const SHOW_INTERNAL_MESSAGES =
+  process.env.NEXT_PUBLIC_SHOW_INTERNAL_MESSAGES === "true";
+// Must match INTERNAL_PREFIX in app/graphs/helpfulness_agent.py
+const INTERNAL_PREFIX = " INTERNAL ";
 
 type StreamMessage = ReturnType<typeof useStream>["messages"][number];
+
+type HelpfulnessValues = {
+  is_helpful?: boolean;
+  reason?: string;
+};
 
 const SUGGESTIONS = [
   "How often should I deworm my cat?",
@@ -42,7 +51,14 @@ function toolIcon(name?: string) {
 
 export function Chat({ assistantId }: { assistantId: string }) {
   const stream = useStream({ apiUrl: API_URL, assistantId });
-  const { messages, isLoading, error } = stream;
+  const { messages, isLoading, error, values } = stream;
+  const { is_helpful: isHelpful, reason } = values as HelpfulnessValues;
+
+  const visibleMessages = SHOW_INTERNAL_MESSAGES
+    ? messages
+    : messages.filter(
+        (message) => !getMessageText(message.content).startsWith(INTERNAL_PREFIX)
+      );
 
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -93,9 +109,13 @@ export function Chat({ assistantId }: { assistantId: string }) {
             </div>
           )}
 
-          {messages.map((message, i) => (
+          {visibleMessages.map((message, i) => (
             <MessageRow key={message.id ?? i} message={message} />
           ))}
+
+          {!isLoading && isHelpful !== undefined && (
+            <JudgeVerdict isHelpful={isHelpful} reason={reason} />
+          )}
 
           {isLoading && <ThinkingRow />}
 
@@ -145,7 +165,9 @@ export function Chat({ assistantId }: { assistantId: string }) {
 function MessageRow({ message }: { message: StreamMessage }) {
   const isHuman = message.type === "human";
   const isTool = message.type === "tool";
-  const text = getMessageText(message.content);
+  const rawText = getMessageText(message.content);
+  const isInternal = rawText.startsWith(INTERNAL_PREFIX);
+  const text = isInternal ? rawText.slice(INTERNAL_PREFIX.length) : rawText;
   const toolCalls =
     message.type === "ai"
       ? (message as unknown as {
@@ -204,13 +226,53 @@ function MessageRow({ message }: { message: StreamMessage }) {
         {text && (
           <div
             className={cn(
-              "rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap",
+              "rounded-2xl px-4 py-2.5 text-sm",
+              "prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1",
+              isHuman ? "prose-invert" : "dark:prose-invert",
+              isInternal && "border border-dashed border-amber-500/50",
               isHuman
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-foreground"
             )}
           >
+            {isInternal && (
+              <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-amber-600">
+                dev only
+              </div>
+            )}
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function JudgeVerdict({
+  isHelpful,
+  reason,
+}: {
+  isHelpful: boolean;
+  reason?: string;
+}) {
+  const [showReason, setShowReason] = useState(false);
+
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4">
+      <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        {isHelpful ? (
+          <span>✅ Judge: This response seems helpful!</span>
+        ) : (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowReason((v) => !v)}
+              className="underline underline-offset-2"
+            >
+              ⚠️ Judge: This response might not be helpful.{" "}
+              {showReason ? "Hide" : "See more"}
+            </button>
+            {showReason && reason && <p className="mt-1">{reason}</p>}
           </div>
         )}
       </div>
