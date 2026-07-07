@@ -442,6 +442,51 @@ _The API key has to stay server-side because anything sent to the browser is vis
 
 Build an `agent_with_helpfulness` graph that adds a post-response helpfulness check: after the agent answers, a judge model decides whether the response is helpful, and if not, the graph loops back for another attempt (with a safe loop limit). Register it in `langgraph.json`, deploy it, then compare LangSmith traces for queries that pass vs. fail the helpfulness check. Does the retry loop behave differently in Studio vs. production?
 
+### 📝 Activity Notes
+
+*Graph:* `agent_with_helpfulness`, wraps `simple_agent` as a subgraph node with a judge node and conditional loop-back, registered in `langgraph.json`.
+
+**Turn 1 > "What are signs of feline dehydration?"**
+
+Agent answers directly using the retrieval tool. Judge passes it on the first attempt.
+
+- `retry_count`: 1, `is_helpful`: true
+- Judge reason: *"The answer is relevant, accurate, and complete for the question. It lists common signs of feline dehydration, adds useful caveats and when to seek veterinary care, and stays within cat health."*
+
+**Turn 2 > "tell me more"**
+
+Vague follow-up, no clear topic. The agent's first two attempts get rejected internally (shown on the frontend as "Attempt 1 was not helpful" / "Attempt 2 was not helpful"), before it lands on asking "Could you tell me what you want more information about?" on the third and final allowed attempt.
+
+- `retry_count`: 3 (the retry ceiling), `is_helpful`: true, but only on that last attempt
+- Judge reason: *"The reply appropriately asks for clarification because the topic was not established. It stays within cat-health context and does not assume an unsupported condition."*
+- Notable: this hit the max retry limit exactly on the attempt that passed. One more failed attempt and it would have hit the `UNHELPFUL_NOTE` fallback instead of a real answer.
+
+**Turn 3 > "tell me about each in detail:"**
+
+Still ambiguous ("each" has no clear referent). One retry before the agent recognizes this and asks for clarification instead of guessing.
+
+- `retry_count`: 2, `is_helpful`: true
+- Judge reason: *"The response correctly identifies the ambiguity, offers the intended cat-health topic (feline dehydration signs) to explain in detail, and invites the user to clarify if they meant something else. It is relevant, safe, and appropriately redirects."*
+
+**Turn 4 > "go with Poor appetite"**
+
+User picks a concrete topic from the earlier list. Agent answers directly with a grounded, detailed response. Passes immediately.
+
+- `retry_count`: 1, `is_helpful`: true
+- Judge reason: *"The response is relevant to 'poor appetite,' explains that it can be a sign of dehydration, gives common causes, warning signs, and when to call a vet, and offers follow-up options. It is complete and appropriately cat-health focused."*
+
+**Comparing pass vs. fail traces**
+
+Passing traces (turns 1 and 4) show a single agent → judge cycle: one call to `simple_agent`, one call to `judge_node`, then straight to `END`. Nothing loops back.
+
+Retry traces (turns 2 and 3) show the graph actually cycling: `agent → judge → agent → judge`, repeated once (turn 3) or twice (turn 2), with each rejected answer swapped in as an internal message rather than shown to the user, and a feedback message injected before the next `agent` call. The trace depth and node-call count is what separates a pass from a retry, not just the final `is_helpful` value.
+
+**Trace vs. UI (Studio/LangSmith vs. production)**
+
+The LangSmith trace captures every step of the flow: each `agent` call, each `judge_node` call, the retry count at each cycle, and every message in state, including ones tagged `internal`. That's where the loop's real mechanics are visible.
+
+The chat UI, standing in for production, doesn't show all of that. The rejected answer and the synthetic retry-feedback message are both tagged `internal`, so the frontend filters them out of the rendered conversation. The user only sees a placeholder like "Attempt 1 was not helpful," not the rejected answer itself or the feedback the agent received before retrying. The UI shows *that* a retry happened; the trace shows *why*, the judge's reasoning, the exact retry prompt, and the full unfiltered message history.
+
 ## Advanced Activity: Auth and Custom Routes
 
 Research [LangSmith Deployments custom routes](https://github.com/langchain-samples/lsd-custom-route-react-ui) and describe how you could add authentication so each user only sees their own threads. Optionally implement a simple auth gate on your Vercel frontend.
