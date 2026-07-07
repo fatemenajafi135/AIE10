@@ -428,7 +428,7 @@ Why does LangSmith deploy your agent as an API backend only, and why do you stil
 
 #### Answer
 
-_(insert your answer here)_
+_LangSmith deploys only the agent as an API because the agent and the frontend have different jobs and different infrastructure needs. The API needs a Python runtime, Postgres for state, and Redis for streaming, heavy, stateful backend work. The frontend just needs to render a chat UI, which is lightweight and works best on an edge platform like Vercel. Keeping them separate also means the API isn't locked to one UI, the same backend could serve a web app, a Slack bot, or any other client. And it lets each side deploy and iterate independently, I redeployed my frontend several times without touching the Railway agent at all._
 
 ### Question #2
 
@@ -436,7 +436,7 @@ Why should the LangSmith API key live in a Next.js API route (server-side) inste
 
 #### Answer
 
-_(insert your answer here)_
+_The API key has to stay server-side because anything sent to the browser is visible to anyone who opens dev tools. The `route.ts` file runs on Vercel's server, not in the browser, it receives the request from the client, attaches the real `LANGSMITH_API_KEY` itself, then forwards it to the Railway agent. The browser only ever talks to my own `/api` route, never to LangSmith directly, so the key is never exposed. This matches Next.js's own convention: only variables prefixed `NEXT_PUBLIC_` get bundled into client-side code, everything else, like this key, stays server-only by default._
 
 ## Activity 1: Build a Helpfulness Loop in Production
 
