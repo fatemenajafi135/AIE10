@@ -15,7 +15,7 @@ def _build_model(default: str, env_var: str, model_name: str | None, temperature
         openai_api_key=os.environ["OPENAI_API_KEY"],
     )
 
-def get_chat_model(model_name: str | None = None, *, temperature: float = 0.5) -> ChatOpenAI:
+def get_chat_model(model_name: str | None = None, *, temperature: float = 0) -> ChatOpenAI:
     return _build_model(DEFAULT_CHAT_MODEL, "OPENAI_CHAT_MODEL", model_name, temperature)
 
 def get_judge_model(model_name: str | None = None, *, temperature: float = 0) -> ChatOpenAI:
