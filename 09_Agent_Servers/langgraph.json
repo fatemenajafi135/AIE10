@@ -4,13 +4,19 @@
   "env": ".env",
   "python_version": "3.13",
   "graphs": {
-    "simple_agent": "app.graphs.simple_agent:graph"
+    "simple_agent": "app.graphs.simple_agent:graph",
+    "helpful_agent": "app.graphs.helpfulness_agent:helpfulness_graph"
   },
   "assistants": {
     "agent": {
       "graph_id": "simple_agent",
       "name": "Simple Agent",
       "description": "Agent with tools using conditional tool-calling."
+    },
+    "agent_with_helpfulness": {
+      "graph_id": "helpful_agent",
+      "name": "Agent with helpfulness",
+      "description": "Agent with tools using conditional tool-calling and a helfulness-check node."
     }
   }
 }
