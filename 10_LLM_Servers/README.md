@@ -83,7 +83,11 @@ What is the difference between serverless and dedicated endpoints?
 
 #### ✅ Answer:
 
-_(insert your answer here)_
+- *A **serverless endpoint** runs on shared, provider-managed infrastructure. We call a model like `accounts/fireworks/models/gpt-oss-20b` and pay per token, with no setup needed. The tradeoff is variable latency, since we share GPUs with other Fireworks customers.*
+
+- *A **dedicated endpoint** reserves GPU capacity just for us, created with firectl create deployment or the Fireworks web UI. We choose the hardware and pay per GPU-hour whether or not we're sending requests, but we get predictable latency in return.*
+
+*Serverless suits prototyping and spiky traffic, dedicated suits steady production load. An idle dedicated deployment still bills by the hour, so we shut it down or set autoscaling to zero when we're done.*
 
 ### ❓ Question #2:
 
@@ -91,13 +95,32 @@ Why is it important to consider token throughput and latency when choosing an LL
 
 #### ✅ Answer:
 
-_(insert your answer here)_
+*Throughput and latency shape how responsive an application feels, not just how accurate it is. If we pick a model that's slow to produce its first token or slow per token after that, users wait, and long waits drive people away regardless of answer quality.*
+
+*This compounds in agent systems, where one user turn can trigger several LLM calls chained together. A small per-call delay multiplies across the loop, so latency that looks fine in a single test can become unacceptable in production.*
+
+*Throughput and latency also tie directly to cost and capacity. A model with low throughput needs more replicas to serve the same traffic, raising cost, while tail latency (p95/p99, not just the average) determines how many users hit a slow, frustrating response even when most requests are fast.*
 
 ## Activity 1: RAGAS Evaluation with Cost Analysis
 
 Use RAGAS to evaluate your open-source Fireworks AI powered RAG app against an OpenAI `gpt-4.1-mini` powered equivalent. Compare retrieval quality, answer faithfulness, and end-to-end accuracy across both providers.
 
 Additionally, instrument both pipelines with **LangSmith** to capture token usage and cost per query. Use LangSmith's tracing and cost dashboards to compare the total cost of running each provider at scale. Include your evaluation results, cost breakdown, and analysis in your Loom video.
+
+
+#### 📝 Activity Notes
+
+- **What was built**
+*Three RAG pipelines (Fireworks, Groq, OpenAI) from one shared `_build_rag_graph`() function in app/rag.py, parameterized by provider. Same PDF, same chunking, only the embedding and generator model change per provider. Evaluated with RAGAS (faithfulness, answer relevancy, context precision, context recall) using a fixed OpenAI judge so no provider grades itself. Cost and token usage pulled from LangSmith traces, tagged per provider.*
+
+- **Key design decisions**
+*Groq has no embeddings API, so it shares OpenAI embeddings with the OpenAI pipeline. This keeps retrieval identical and isolates the comparison to just the generator model. The question set was hand written and grounded in real quotes from the PDF instead of using RAGAS's synthetic testset generator, since the installed ragas version already had one compatibility bug and adding a heavier subsystem risked more.*
+
+- **Bugs found and fixed**
+*Three separate issues came up: ragas 0.4.3 has a broken import chain against newer langchain-community (worked around with a sys.modules stub), the Fireworks embedding model in .env was misconfigured for this account (swapped to a working model), and RAGAS's judge LLM defaulted to a token limit too small for longer contexts, which silently truncated its output until max_tokens was raised.*
+
+- **Lessons learned**
+*Fireworks serverless models can cold start unpredictably (seconds to minutes), so timeouts and retries matter more than expected. Groq matched OpenAI's quality scores at a fraction of the cost in this test. Ran the full comparison on a smaller question subset due to time, not all 8 questions across all 3 providers.*
 
 ## Advanced Activity: Local Models
 
