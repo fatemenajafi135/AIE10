@@ -6,6 +6,8 @@ Guidance for Claude Code when working in this repository.
 
 ```bash
 uv sync                                # install dependencies
+export ANTHROPIC_API_KEY="sk-ant-..."  # required, the agent calls the Claude API
+export TARGET_REPO_PATH="/path/to/repo"  # optional, defaults to cwd; the repo the concierge answers about
 uv run uvicorn main:app --reload       # run the dev server on http://localhost:8000
 ```
 
@@ -25,6 +27,11 @@ FastAPI backend (`main.py`) + static HTML/CSS/JS frontend (`static/`), no
 frontend framework.
 
 - `GET /` serves `static/index.html`; `/static/*` is mounted for CSS/JS.
-- `POST /api/chat` accepts `{message, conversation_id}` and returns `{reply}`.
+- `POST /api/chat` accepts `{message, conversation_id}` and returns `{reply}` (non-streaming).
+- `GET /api/chat/stream?message=&conversation_id=` streams the agent's tool calls then the final reply as Server-Sent Events; the browser UI uses this one.
 
-Reply logic lives in `chat_logic.py`'s `generate_reply(message, conversation_id)`. It currently echoes the input. This is the seam: `chat_logic.py` has no FastAPI or HTTP knowledge, so wiring in the real Claude Agent SDK `query()` call later means editing only this one file. `main.py` and the frontend stay untouched.
+Reply logic lives in `chat_logic.py`'s `generate_reply_stream(message, conversation_id)` async generator (with `generate_reply()` as a non-streaming wrapper over it). It calls the Claude Agent SDK's `query()`, configured as a read-only codebase concierge (`allowed_tools=["Read", "Glob", "Grep", "mcp__concierge__count_lines", "mcp__concierge__git_log"]`, `max_turns=25`, `cwd=TARGET_REPO_PATH`). `chat_logic.py` has no FastAPI or HTTP knowledge.
+
+Safety enforcement: `allowed_tools` alone is only a pre-approval list, not an exclusive gate, so `permission_mode="dontAsk"` is set to deny any tool not on the allowlist, backed by an explicit `disallowed_tools` blocklist (`Bash`, `Write`, `Edit`, etc.). This is what actually stops the headless agent from running shell commands.
+
+`conversation_id` (from the browser) is mapped to the SDK's `session_id` in an in-memory dict, so follow-up messages in the same conversation resume the same agent session.

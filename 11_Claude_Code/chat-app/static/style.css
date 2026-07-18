@@ -52,6 +52,17 @@ body {
   border-bottom-left-radius: 0.25rem;
 }
 
+.message.status {
+  color: #666;
+  font-style: italic;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 .composer {
   display: flex;
   gap: 0.5rem;
