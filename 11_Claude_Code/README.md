@@ -66,7 +66,9 @@ While scaffolding in Task 3 you used **plan mode** before letting Claude Code wr
 
 #### ✅ Answer
 
-_(insert your answer here)_
+
+_An agent that can run shell commands and edit files can also break things, irreversibly and fast, with no human reviewing each step. The permission system keeps a human in the loop: it turns “the agent decided to do X” into “the agent proposed X, I approved it.” Starting from an empty directory is the highest-risk moment. There is no existing structure or test suite to catch a bad decision, and a wrong assumption made early (wrong framework, wrong file layout) is expensive to unwind later. Plan mode is read-only, so Claude can explore and propose a full plan before a single file is written, right when steering is cheapest._ 
+
 
 ### ❓ Question #2
 
@@ -74,7 +76,13 @@ _(insert your answer here)_
 
 #### ✅ Answer
 
-_(insert your answer here)_
+
+**Belongs**: *run and test commands, the one architecture decision that isn’t obvious from reading the code (here, that the chat logic is isolated in one swappable function), and conventions worth enforcing (plain JS, no frameworks, keep the stub isolated).*
+
+**Doesn’t belong**: *anything discoverable by reading the code itself, long prose, or stale information. Every line costs context tokens in every future session.*
+
+*This is the same lesson as Session 3’s context management: context is scarce, so you only load what earns its keep. CLAUDE.md is functionally a standing system message injected at the start of every session, the same way a curated system prompt beats dumping everything you know into it.*
+
 
 ### ❓ Question #3
 
@@ -82,7 +90,12 @@ The Agent SDK gives you the same agent loop that powers Claude Code. Compare thi
 
 #### ✅ Answer
 
-_(insert your answer here)_
+**Free**: a battle-tested agent loop with retries and error handling, production file/shell/search tools, the permission system and hooks, automatic context compaction, MCP client support, subagents, and session persistence. That’s most of what I hand-assembled piece
+by piece since Session 2. 
+
+**Given up**: *fine-grained control over each loop iteration (no intercepting and rewriting a reasoning step the way a custom LangGraph node lets you), choice of model provider (Claude only), and arbitrary custom state graph topologies, everything runs through one fixed loop shape.* 
+
+*In short, the SDK trades control for velocity. It’s a great fit when the task looks like “coding agent answering questions about a repo,” less of a fit when the workflow needs a genuinely custom multi-branch graph.* 
 
 ### ❓ Question #4
 
@@ -90,7 +103,11 @@ Your chat app could have called a chat completions API directly, the way you did
 
 #### ✅ Answer
 
-_(insert your answer here)_
+**Gain**: *query() gives the whole agent loop for free, tool use, retries, context management, permissions, instead of one text completion. The app can genuinely answer questions about a codebase, not just chat about it in the abstract.* 
+
+**New risk**: *an agent with tools can act, not just talk. A plain completion can only generate text; an agent with Read/Glob/Grep (or worse, Bash) could read or touch things it shouldn’t, especially since this agent runs headless on a server with no human clicking “approve” on each step.* 
+
+**How it’s addressed**: *the allowlist (Read, Glob, Grep, plus the two explicitly named custom tools) is the intended boundary — but I learned the hard way that `allowed_tools` alone is only a pre-approval list, not an exclusive gate: in a first test the agent happily ran `Bash` even though it wasn’t on the list, because in headless mode there’s no human to prompt. The fix was `permission_mode="dontAsk"`, which denies anything not pre-approved, backed by an explicit `disallowed_tools` blocklist (Bash, Write, Edit, …). With those in place the agent structurally cannot run shell commands or edit files no matter what a user types. `max_turns=25` caps runaway loops, and errors are caught and returned as a polite chat reply instead of a stack trace or a hung request.* 
 
 ## Activity 1: Level Up the Chat App
 
@@ -101,6 +118,12 @@ Extend your working chat app with **at least one** of the following (built with 
 3. **A second custom tool** — something genuinely useful for your target repo (e.g. `git_log` for recent changes, or a test-runner summary tool)
 
 Whichever you pick, demo it in your Loom video and explain the design decision in one paragraph.
+
+#### ✅ What I built
+
+I did two of these: **#3 (a second custom tool)** and **#1 (live progress streaming)**.
+
+*Design decision:* I refactored the core agent loop into a single async generator, `generate_reply_stream()`, that yields typed events — one per tool call as it happens (`{"type": "tool", "label": "Reading main.py…"}`) and a final `{"type": "result", "reply": …}`. Both endpoints run through this one path: the browser UI consumes it over Server-Sent Events (`GET /api/chat/stream`) via `EventSource`, and the plain `POST /api/chat` just drains the same generator and returns the last event, so there's no duplicated `query()` loop. I chose SSE over WebSockets because the data only flows one direction (server → browser) and EventSource is a few lines with automatic reconnection; the trade-off is that EventSource only does GET, so the message rides in the query string, which is fine for this app's short prompts. The second tool, `git_log`, is read-only like `count_lines`, so it fits the same safety story — it can report commit history but can't change it.
 
 ## Advanced Activity: The Cat Shop Concierge
 
